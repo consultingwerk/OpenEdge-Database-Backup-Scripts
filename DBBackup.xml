@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="DBBackup" default="RemoveOldBackups" basedir="." xmlns:if="ant:if" xmlns:unless="ant:unless">
+
+    <taskdef resource="net/sf/antcontrib/antlib.xml"/>
+
+    <property environment="env" />
+    <property file="backup.properties" />
+
+    <tstamp />
+    
+    <condition property="Build.Verbose">
+        <contains substring="-v" string="${sun.java.command}"/>
+    </condition>
+    <condition property="Build.Verbose" value="false">
+        <not>
+            <isset property="Build.Verbose"/>
+        </not>
+    </condition>
+    <!--* Generate a random UUID*-->
+    <scriptdef language="javascript" name="generateguid">
+        <attribute name="property"/>
+        <![CDATA[
+                    project.setProperty( attributes.get( "property" ), java.util.UUID.randomUUID() );
+                    ]]>
+    </scriptdef>
+    <!--* Determine current hostname*-->
+    <exec outputproperty="LocalHost" executable="hostname"/>
+    <!--* Determine Operating System*-->
+    <condition property="OperatingSystem" value="Windows">
+        <os family="windows"/>
+    </condition>
+    <condition property="OperatingSystem" value="UNIX">
+        <os family="unix"/>
+    </condition>
+    <property name="OperatingSystem" value="Other"/>
+
+	<!--* Not necessary, but useful for Problem Determination*-->
+    <target name="BOM">
+        <generateguid property="whoami.guid"/>
+        <tempfile property="whoami.file" destDir="${Temp.Directory}" prefix="whoami.${whoami.guid}."/>
+        <exec dir="${Temp.Directory}" executable="whoami" failonerror="false" resultproperty="whoami.result" output="${whoami.file}"> </exec>
+        <loadfile property="whoami.output" srcfile="${whoami.file}"/>
+        <delete file="${whoami.file}" verbose="false"/>
+        <echo message="###########################################################################################################"/>
+        <echo message="########## START - BOM - Bill Of Materials ##########"/>
+        <echo message="###########################################################################################################"/>
+        <echo message="###### Build started by = ${whoami.output}"/>
+        <echo message="###### Machine name = ${LocalHost}"/>
+        <echo message="###### Operating System = ${OperatingSystem}"/>
+        <echo message="###### JAVA_HOME = ${env.JAVA_HOME}"/>
+        <echo message="###### ANT_HOME = ${env.ANT_HOME}"/>
+        <echo message="###### Ant version = ${ant.version}"/>
+        <echo message="###### basedir = ${basedir}"/>
+        <echo message="###### Verbose mode = ${Build.Verbose}"/>
+        <echo message="###########################################################################################################"/>
+        <echo message="########## Properties Values ##########"/>
+        <echo message="###########################################################################################################"/>
+        <echo message="###### dlc_home = ${progress.DLC}"/>
+        <echo message="###### Online Backup = ${backup.online}"/>
+        <echo message="###### Parallel = ${parallel}"/>
+        <echo message="###### threadCount = ${threadCount}"/>
+        <echo message="###### Temp Directory = ${Temp.Directory}"/>
+        <echo message="###### Database List = ${Database.List}"/>
+        <echo message="###########################################################################################################"/>
+        <echo message="########## END - BOM - Bill Of Materials ##########"/>
+        <echo message="###########################################################################################################"/>
+    </target>
+
+    <target name="BackupDatabases" depends="BOM">
+        <for list="${Database.List}" param="database" parallel="${parallel}" threadCount="${threadCount}">
+            <sequential>
+                <echo message="Working on Database: @{database} Full path: ${Database.List.@{database}.Location}${Database.List.@{database}.FileName}" />
+				<if> <equals arg1="${backup.online}" arg2="online" />
+					<then>
+						<exec executable="${progress.DLC}/bin/_mprshut" failonerror="true" dir="${Database.List.@{database}.Location}">
+							<arg line="${Database.List.@{database}.FileName} -C backup online  ${Database.List.@{database}.LocalBackup}${DSTAMP}${Database.List.@{database}.BackupFile} -Bp ${Private.Buffers}" />
+						</exec>
+					</then>
+				
+					<else>
+						<exec executable="${progress.DLC}/bin/_dbutil" failonerror="true" dir="${Database.List.@{database}.Location}">
+							<arg line="probkup ${Database.List.@{database}.FileName} ${Database.List.@{database}.LocalBackup}${DSTAMP}${Database.List.@{database}.BackupFile}" />
+						</exec>
+					</else>
+				</if>
+            </sequential>
+        </for>
+    </target>
+	
+	<target name="VerifyBackup" depends="BackupDatabases">
+        <for list="${Database.List}" param="database" parallel="${parallel}" threadCount="${threadCount}">
+            <sequential>
+                <echo message="Working on Database: @{database} Full path: ${Database.List.@{database}.Location}${Database.List.@{database}.FileName}" />
+					<exec executable="${progress.DLC}/bin/_dbutil" failonerror="true" dir="${Database.List.@{database}.Location}">
+						<arg line="prorest ${Temp.Directory}/${Database.List.@{database}.FileName} ${Database.List.@{database}.LocalBackup}${DSTAMP}${Database.List.@{database}.BackupFile} -vp" />
+					</exec>
+            </sequential>
+        </for>
+	</target>
+
+    <target name="CopyOffsite" depends="VerifyBackup">
+        <for list="${Database.List}" param="database" parallel="${parallel}" threadCount="${threadCount}">
+            <sequential>
+                <echo message="Working on Database: @{database} Full path: ${Database.List.@{database}.Location}${Database.List.@{database}.FileName}" />
+                <copy file="${Database.List.@{database}.LocalBackup}${DSTAMP}${Database.List.@{database}.BackupFile}" 
+                      todir="${Database.List.@{database}.OffsiteBackup}" 
+                      failonerror="true"/>
+            </sequential>
+        </for>
+    </target>
+
+    <target name="BackupConfig" depends="CopyOffsite">
+        <for list="${Database.List}" param="database" parallel="${parallel}" threadCount="${threadCount}">
+            <sequential>
+                <echo message="Working on Database: @{database} Full path: ${Database.List.@{database}.Location}${Database.List.@{database}.FileName}" />
+                <for list="${Database.List.@{database}.ConfigFiles}" param="filename" parallel="${parallel}" threadCount="${threadCount}">
+                    <sequential>
+                        <copy file="@{filename}" 
+                              todir="${Database.List.@{database}.LocalBackup}"
+                              failonerror="true" />
+                        <copy file="@{filename}" 
+                              todir="${Database.List.@{database}.OffsiteBackup}"
+                              failonerror="true" />
+                    </sequential>
+                </for>
+            </sequential>
+        </for>    
+    </target>
+
+    <target name="CopyAIOffsite" depends="BackupConfig">
+        <for list="${Database.List}" param="database" parallel="${parallel}" threadCount="${threadCount}">
+            <sequential>
+                <copy todir="${Database.List.@{database}.OffsiteAIBackup}" failonerror="true">
+                    <fileset dir="${Database.List.@{database}.AIArchive}"/>
+                </copy>
+            </sequential>
+        </for>
+    </target>
+
+    <target name="CleanupAI" depends="CopyAIOffsite">
+        <for list="${Database.List}" param="database" parallel="${parallel}" threadCount="${threadCount}">
+            <sequential>
+                <echo message="Working on Database: @{database} Full path: ${Database.List.@{database}.Location}${Database.List.@{database}.FileName}" />
+                <tstamp>
+                    <format property="AIRetention" pattern="MM/dd/yyyy hh:mm a" locale="en,UK" offset="-${AI.Retention.Number}" unit="${AI.Retention.Unit}"/>
+                </tstamp>
+                <delete>
+                    <fileset dir="${Database.List.@{database}.AIArchive}" includes="**/*.*">
+                        <date datetime="${AIRetention}" when="before"/>
+                    </fileset>
+                </delete>
+            </sequential>
+        </for>
+    </target>
+
+    <target name="RemoveOldBackups" depends="BackupDatabases,VerifyBackup,CopyOffsite,BackupConfig,CopyAIOffsite,CleanupAI">
+        <for list="${Database.List}" param="database" parallel="${parallel}" threadCount="${threadCount}">
+            <sequential>
+                <echo message="Working on Database: @{database} Full path: ${Database.List.@{database}.Location}${Database.List.@{database}.FileName}" />
+                <tstamp>
+                    <format property="BKRetention" pattern="MM/dd/yyyy hh:mm a" locale="en,UK" offset="-${Backup.Retention.Number}" unit="${Backup.Retention.Unit}"/>
+                </tstamp>
+                <delete>
+                    <fileset dir="${Database.List.@{database}.LocalBackup}" includes="**/*.bkp">
+                        <date datetime="${BKRetention}" when="before"/>
+                    </fileset>
+                </delete>
+            </sequential>
+        </for>
+
+    </target>
+
+</project>
