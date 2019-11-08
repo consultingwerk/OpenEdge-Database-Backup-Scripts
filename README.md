@@ -4,7 +4,7 @@ Ant scripts for backup of OpenEdge databases.
 This is a very simple Ant script to backup any number of databases, and handle the After Image Archive files for that database. This can very easily be incorporated into Jenkins to run on a schedule. 
 
 ## Execution
-To run, install Ant. Customise backup.properties. 
+To run, install Ant. Install Ant Contrib. Customise backup.properties. 
 Command line: ant -f DBBackup.xml
 
 ## Ant Targets
