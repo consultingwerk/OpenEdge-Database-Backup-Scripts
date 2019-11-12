@@ -74,13 +74,13 @@
 				<if> <equals arg1="${backup.online}" arg2="online" />
 					<then>
 						<exec executable="${progress.DLC}/bin/_mprshut" failonerror="true" dir="${Database.List.@{database}.Location}">
-							<arg line="${Database.List.@{database}.FileName} -C backup online  ${Database.List.@{database}.LocalBackup}${DSTAMP}${Database.List.@{database}.BackupFile} -Bp ${Private.Buffers}" />
+							<arg line="${Database.List.@{database}.FileName} -C backup online  ${Database.List.@{database}.LocalBackup}${DSTAMP}${Database.List.@{database}.BackupFile} -com -Bp ${Private.Buffers}" />
 						</exec>
 					</then>
 				
 					<else>
 						<exec executable="${progress.DLC}/bin/_dbutil" failonerror="true" dir="${Database.List.@{database}.Location}">
-							<arg line="probkup ${Database.List.@{database}.FileName} ${Database.List.@{database}.LocalBackup}${DSTAMP}${Database.List.@{database}.BackupFile}" />
+							<arg line="probkup ${Database.List.@{database}.FileName} ${Database.List.@{database}.LocalBackup}${DSTAMP}${Database.List.@{database}.BackupFile} -com" />
 						</exec>
 					</else>
 				</if>
